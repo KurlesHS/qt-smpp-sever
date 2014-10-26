@@ -1,7 +1,10 @@
 #include "smppsession.h"
+#include "qtopia/qgsmcodec.h"
 
 #include <QTimer>
 #include <QHostAddress>
+#include <QUuid>
+
 QAtomicInt SmppSession::m_sequenceNumber = QAtomicInt(0x01);
 
 class SmppHeader : public Smpp::Request {
@@ -98,13 +101,25 @@ void SmppSession::handleSubmitSm(const QByteArray &pdu)
     Smpp::String addr = submitSm.destination_addr().address();
 
     QString recepitient = QString::fromUtf8(addr.data());
-    bool registeredDelivert = submitSm.registered_delivery();
+    bool registeredDelivery = submitSm.registered_delivery();
     std::vector<Smpp::Uint8> shortMessage = submitSm.short_message();
-    QString smsText = QString::fromUtf8(
-                (const char*)shortMessage.data(),
-                shortMessage.size());
-    logMsg(QString("SubmitSm command received"));
-
+    Smpp::DataCoding dataCoding = submitSm.data_coding();
+    QByteArray smsTextCoded((const char*)shortMessage.data(),
+                            shortMessage.size());
+    Smpp::SubmitSmResp resp;
+    resp.message_id();
+    resp.sequence_number(submitSm.sequence_number());
+    resp.command_status(0);
+    if (dataCoding != 0x00 || dataCoding != 0x08) {
+        logMsg(QString("SubmitSm command received with unknown datacoding (0x%0)").arg(dataCoding, 2, 16, QChar('0')));
+        resp.command_status(0x45);
+    } else {
+        QTextCodec *codec = QTextCodec::codecForName("UTF-16");
+        QString smsText = codec->toUnicode(smsTextCoded);
+        logMsg(QString("SubmitSm command received. Text: %0, recepient: %1, registered delivery: %2")
+               .arg(smsText, recepitient, registeredDelivery ? "true" : "false"));
+    }
+    writeSmppPacket<Smpp::SubmitSmResp>(resp);
 }
 
 void SmppSession::handleEnquireLink(const QByteArray &pdu)
@@ -120,8 +135,7 @@ void SmppSession::handleEnquireLink(const QByteArray &pdu)
     Smpp::EnquireLinkResp resp;
     resp.sequence_number(enquireLink.sequence_number());
     resp.command_status(0);
-    QByteArray outgoingPdu((const char *)resp.encode(), resp.command_length());
-    m_clientSocket->write(outgoingPdu);
+    writeSmppPacket<Smpp::EnquireLinkResp>(resp);
 }
 
 void SmppSession::handleUnbind(const QByteArray &pdu)
@@ -137,11 +151,33 @@ void SmppSession::handleUnbind(const QByteArray &pdu)
     Smpp::UnbindResp resp;
     resp.sequence_number(unbind.sequence_number());
     resp.command_status(0);
-    QByteArray outgoingPdu((const char *)resp.encode(), resp.command_length());
-    m_clientSocket->write(outgoingPdu);
+    writeSmppPacket<Smpp::UnbindResp>(resp);
     m_clientSocket->waitForBytesWritten(4000);
     disconnectFromClient();
     deleteLater();
+}
+
+void SmppSession::sendDeliveryReport(const QString &messageId)
+{
+    Smpp::DeliverSm deliverSm;
+    deliverSm.esm_class(0x04); // delivery report
+    deliverSm.sequence_number(nextSequenceNumber());
+    deliverSm.insert_string_tlv(Smpp::Tlv::receipted_message_id, messageId.toStdString());
+#if 0
+    ENROUTE       1 Сообщение находится в состоянии в пути (enroute).
+    DELIVERED     2 Сообщение доставлено адресату.
+    EXPIRED       3 Истек период допустимости сообщения.
+    DELETED       4 Сообщение было удалено.
+    UNDELIVERABLE 5 Сообщение является недоставляемым.
+    ACCEPTED      6 Сообщение находится в принятом состоянии
+                    (т.е. читалось вручную от имени абонента
+                    клиентской службой).
+    UNKNOWN       7 Сообщение находится в недопустимом состоянии.
+    REJECTED      8 Сообщение находится в отклоненном состоянии.
+#endif
+    deliverSm.insert_8bit_tlv(Smpp::Tlv::message_state, 0x02); //delivered
+    writeSmppPacket<Smpp::DeliverSm>(deliverSm);
+
 }
 
 void SmppSession::startTimeoutTimer()
@@ -152,7 +188,7 @@ void SmppSession::startTimeoutTimer()
 
 void SmppSession::stopTimeoutTimer()
 {
-    if (m_timeoutTimer->isActive()){
+    if (m_timeoutTimer->isActive()) {
         m_timeoutTimer->stop();
     }
 }
@@ -176,6 +212,11 @@ void SmppSession::logMsg(const QString &msg)
 {
 
     qDebug(m_logStringTemplage.arg(msg).toUtf8());
+}
+
+QString SmppSession::createNewMessageId()
+{
+    return QUuid::createUuid().toString().remove("-").remove("{").remove("}");
 }
 
 void SmppSession::onClientDisconnected()

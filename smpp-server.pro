@@ -21,8 +21,10 @@ TEMPLATE = app
 
 SOURCES += main.cpp \
     smppserver.cpp \
-    smppsession.cpp
+    smppsession.cpp \
+    qtopia/qgsmcodec.cpp
 
 HEADERS += \
     smppserver.h \
-    smppsession.h
+    smppsession.h \
+    qtopia/qgsmcodec.h

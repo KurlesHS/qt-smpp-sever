@@ -24,6 +24,8 @@ private:
     void handleEnquireLink(const QByteArray &pdu);
     void handleUnbind(const QByteArray &pdu);
 
+    void sendDeliveryReport(const QString &messageId);
+
     void startTimeoutTimer();
     void stopTimeoutTimer();
 
@@ -31,6 +33,14 @@ private:
     void disconnectFromClient();
 
     void logMsg(const QString &msg);
+
+    template<typename T>
+    void writeSmppPacket(T &packet) {
+        QByteArray outgoingPdu((const char *)packet.encode(), packet.command_length());
+        m_clientSocket->write(outgoingPdu);
+    }
+
+    static QString createNewMessageId();
 
 private slots:
    void onClientDisconnected();
