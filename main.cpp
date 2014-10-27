@@ -3,6 +3,7 @@
 #include <QTextCodec>
 #include <QProcess>
 #include <QDir>
+#include "smpp-server/smppserver.h"
 
 
 int main(int argc, char *argv[])
@@ -25,6 +26,7 @@ int main(int argc, char *argv[])
         QStringList args = {"-t"};
         return QProcess::startDetached(command, args, QDir::currentPath()) ? 0 : -1;
     }
-
+    SmppServer server(QHostAddress::Any, 8081);
+    server.addAuthenticationInfo("user", "password");
     return a.exec();
 }

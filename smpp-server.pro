@@ -10,7 +10,7 @@ QT       -= gui
 
 QMAKE_CXXFLAGS += -std=c++11
 
-include($$PWD/smppcxx/smppcxx.pri)
+include($$PWD/smpp-server.pri)
 
 TARGET = smpp-server
 #CONFIG   += console
@@ -19,12 +19,4 @@ CONFIG   -= app_bundle
 TEMPLATE = app
 
 
-SOURCES += main.cpp \
-    smppserver.cpp \
-    smppsession.cpp \
-    qtopia/qgsmcodec.cpp
-
-HEADERS += \
-    smppserver.h \
-    smppsession.h \
-    qtopia/qgsmcodec.h
+SOURCES += main.cpp
